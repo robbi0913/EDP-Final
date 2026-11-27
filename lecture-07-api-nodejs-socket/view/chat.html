@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Chat</title>
+</head>
+<body>
+  <h1>Real-time Chat</h1>
+
+  <p id="status">Connecting...</p>
+  <p>Your ID: <strong id="my-id">-</strong></p>
+
+  <h3>Online Users</h3>
+  <ul id="user-list"></ul>
+
+  <h3>Messages</h3>
+  <ul id="messages"></ul>
+  <p id="typing"></p>
+
+  <form id="chat-form">
+    <label for="message">Message:</label>
+    <input id="message" maxlength="2000" autocomplete="off" required>
+    <button type="submit">Send</button>
+  </form>
+
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const status = document.getElementById("status");
+    const form = document.getElementById("chat-form");
+    const input = document.getElementById("message");
+    const messages = document.getElementById("messages");
+
+    const userList = document.getElementById("user-list");
+    const typingEl = document.getElementById("typing");
+    const myIdEl = document.getElementById("my-id");
+
+    let typingTimeout;
+
+    function renderMessage(msg) {
+      const li = document.createElement("li");
+      li.textContent = `[${msg.sentAt}] ${msg.senderId}: ${msg.text}`;
+      messages.appendChild(li);
+    }
+
+    socket.on("connect", () => {
+      status.textContent = "Connected";
+      myIdEl.textContent = socket.id;
+    });
+
+    socket.on("disconnect", () => {
+      status.textContent = "Disconnected";
+      myIdEl.textContent = "-";
+    });
+
+    socket.on("connect_error", () => {
+      status.textContent = "Connection failed. Retrying...";
+    });
+
+    socket.on("message:error", (res) => {
+      status.textContent = res.error;
+    });
+
+    socket.on("chat:history", (history) => {
+      messages.innerHTML = "";
+      history.forEach(renderMessage);
+    });
+
+    socket.on("message", renderMessage);
+
+    socket.on("system:notice", (text) => {
+      const li = document.createElement("li");
+      li.textContent = `* ${text}`;
+      messages.appendChild(li);
+    });
+
+    socket.on("users:update", (users) => {
+      userList.innerHTML = "";
+      users.forEach((id) => {
+        const li = document.createElement("li");
+        li.textContent = id === socket.id ? `${id} (You)` : id;
+        userList.appendChild(li);
+      });
+    });
+
+    socket.on("typing:update", (id) => {
+      typingEl.textContent = id ? `${id} is typing...` : "";
+    });
+
+    input.addEventListener("input", () => {
+      socket.emit("typing:start");
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => socket.emit("typing:stop"), 1000);
+    });
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!socket.connected) {
+        status.textContent = "Not connected. Please wait and try again.";
+        return;
+      }
+      if (!input.value.trim()) {
+        status.textContent = "Please enter a message.";
+        return;
+      }
+      socket.emit("message", input.value);
+      socket.emit("typing:stop");
+      input.value = "";
+      status.textContent = "Connected";
+    });
+  </script>
+
+</body>
+</html>
